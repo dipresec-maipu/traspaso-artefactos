@@ -1,0 +1,527 @@
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base target="_top">
+  <title>Traspaso de artefactos - DIPRESEC</title>
+
+  <!-- ✅ ZXingBrowser (cámara/QR) -->
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+
+  <style>
+    :root{--brand:#0b4aa2;--bg:#f6f7fb;--card:#fff;--muted:#667085;--border:#e6e8ef;}
+    body{font-family:system-ui;margin:0;background:var(--bg);color:#111827;font-size:18px}
+    header{background:#fff;border-bottom:1px solid var(--border);padding:12px 14px;display:flex;align-items:center;gap:12px}
+    header img{width:46px;height:46px;object-fit:contain}
+    header .title{display:flex;flex-direction:column;line-height:1.15}
+    header .title .top{font-weight:900;font-size:18px;color:var(--brand)}
+    header .title .sub{font-size:14px;color:var(--muted);font-weight:700;margin-top:2px}
+    .wrap{padding:14px;max-width:820px;margin:0 auto}
+    .tabs{display:flex;gap:10px;margin-top:12px}
+    .btn{appearance:none;border:0;border-radius:12px;padding:14px 16px;font-size:18px;font-weight:900;width:100%;margin:8px 0;background:var(--brand);color:#fff}
+    .btn.secondary{background:#111827}
+    .btn.light{background:#fff;color:#111827;border:1px solid var(--border)}
+    .btn.small{padding:10px 12px;font-size:16px;border-radius:10px;width:auto;margin:0}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 1px 2px rgba(16,24,40,.06)}
+    label{display:block;margin-top:12px;font-weight:900}
+    select,input,textarea{width:100%;padding:12px;font-size:18px;margin-top:8px;border-radius:12px;border:1px solid var(--border);background:#fff;box-sizing:border-box}
+    textarea{resize:vertical}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media (max-width:540px){.row{grid-template-columns:1fr}header .title .top{font-size:16px}}
+    .hint{color:var(--muted);font-size:14px;margin-top:8px;font-weight:700}
+    .ok{color:#027a48;font-weight:900;margin:10px 0;white-space:pre-wrap}
+    .err{color:#b42318;font-weight:900;margin:10px 0;white-space:pre-wrap}
+    .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+    .chip{background:#f2f4f7;padding:10px 12px;border-radius:999px;font-weight:900;display:flex;align-items:center;gap:10px}
+    .chip button{border:0;background:#111827;color:#fff;border-radius:999px;width:34px;height:34px;font-size:16px;font-weight:900}
+    hr{border:0;border-top:1px solid var(--border);margin:14px 0}
+    canvas{border:1px solid #98a2b3;width:100%;height:200px;touch-action:none;border-radius:12px;background:#fff}
+    table{width:100%;border-collapse:collapse;font-size:16px}
+    th,td{border:1px solid var(--border);padding:10px;vertical-align:top}
+    th{background:#f8fafc;font-weight:900}
+    .tableWrap{overflow:auto;border-radius:12px;border:1px solid var(--border)}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999}
+    .modal .box{background:#fff;width:min(700px,100%);border-radius:14px;padding:12px;border:1px solid var(--border)}
+    .modal h3{margin:6px 0 10px;font-size:18px}
+    video{width:100%;border-radius:12px;background:#000}
+  </style>
+</head>
+
+<body>
+<header>
+  <img src="https://www.municipalidadmaipu.cl/img/escudo_maipu.32d4bc5a.png" alt="Municipalidad de Maipú">
+  <div class="title">
+    <div class="top">Ilustre Municipalidad de Maipú</div>
+    <div class="sub">DIPRESEC · Traspaso de artefactos (Turnos)</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="tabs">
+    <button class="btn light" onclick="showView('registro')">Registrar traspaso</button>
+    <button class="btn light" onclick="showView('consulta')">Últimos 3 turnos</button>
+  </div>
+
+  <div id="msg"></div>
+
+  <!-- REGISTRO -->
+  <div id="view-registro" class="card">
+    <h2 style="margin:6px 0 10px;font-size:20px;">Registro</h2>
+
+    <div class="row">
+      <div>
+        <label>Turno</label>
+        <select id="turno">
+          <option value="">Selecciona...</option>
+          <option>1</option><option>2</option><option>3</option>
+        </select>
+      </div>
+      <div>
+        <label>Acción</label>
+        <select id="accion" onchange="onAccionChange()">
+          <option value="">Selecciona...</option>
+          <option>Entrega</option>
+          <option>Recepción</option>
+          <option>Cambio</option>
+          <option>Observación</option>
+        </select>
+      </div>
+    </div>
+
+    <label>Funcionario receptor</label>
+    <select id="funcReceptor"></select>
+
+    <label>Funcionario entrega (opcional)</label>
+    <select id="funcEntrega"></select>
+
+    <label>Estado general</label>
+    <select id="estadoGeneral">
+      <option value="">Selecciona...</option>
+      <option>OK</option>
+      <option>Con observación</option>
+      <option>Dañado</option>
+      <option>Falta accesorio</option>
+      <option>Batería baja</option>
+    </select>
+
+    <label>Observación (opcional)</label>
+    <textarea id="observacion" rows="3" placeholder="Ej: Radio con audio bajo, chaleco con velcro suelto..."></textarea>
+
+    <hr>
+
+    <h3 style="margin:6px 0 8px;font-size:18px;">Artefactos (escaneo múltiple)</h3>
+
+    <div class="row">
+      <button class="btn" type="button" onclick="openScanner()">📷 Escanear QR</button>
+      <button class="btn secondary" type="button" onclick="focusManual()">⌨️ Ingresar ID manual</button>
+    </div>
+
+    <label>ID artefacto</label>
+    <input id="assetInput" placeholder="Ej: RAD-023" autocapitalize="characters">
+    <button class="btn light" type="button" onclick="addAsset()">Agregar artefacto</button>
+
+    <div class="hint">Al escanear, se agrega automáticamente y se cierra la cámara.</div>
+
+    <div id="chips" class="chips"></div>
+
+    <hr>
+
+    <h3 style="margin:6px 0 8px;font-size:18px;">Firma del receptor</h3>
+    <canvas id="sig"></canvas>
+    <div class="hint">Firma con el dedo. Si te equivocas, presiona “Limpiar firma”.</div>
+    <button class="btn light" type="button" onclick="clearSignature()">Limpiar firma</button>
+
+    <button class="btn" type="button" onclick="guardar()">GUARDAR TRASPASO</button>
+  </div>
+
+  <!-- CONSULTA -->
+  <div id="view-consulta" class="card" style="display:none;">
+    <h2 style="margin:6px 0 10px;font-size:20px;">Últimos 3 turnos</h2>
+
+    <button class="btn light" type="button" onclick="loadUltimos()">Refrescar</button>
+
+    <label>Buscar (nombre / artefacto / op_id)</label>
+    <input id="search" oninput="renderTable()" placeholder="Ej: Juan / RAD-023 / OP-...">
+
+    <div class="tableWrap" style="margin-top:12px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Hora</th><th>Turno</th><th>Acción</th><th>Receptor</th>
+            <th>Artefactos</th><th>Estado</th><th>Detalle</th>
+          </tr>
+        </thead>
+        <tbody id="opsBody"></tbody>
+      </table>
+    </div>
+
+    <div id="detalle" style="margin-top:14px;"></div>
+  </div>
+</div>
+
+<!-- MODAL SCANNER -->
+<div id="scannerModal" class="modal" aria-hidden="true">
+  <div class="box">
+    <h3>Escanear QR</h3>
+    <video id="video" playsinline></video>
+    <div class="hint">Al detectar el QR, se agregará automáticamente y se cerrará la cámara.</div>
+    <button class="btn secondary" type="button" onclick="closeScanner()">Cerrar</button>
+  </div>
+</div>
+
+<script>
+  // ✅ PEGA AQUÍ TU URL /exec de Apps Script
+  const API_URL = "https://script.google.com/macros/s/AKfycbxLtJuEpU_VgcsMxJBeu75kfwDTFuI-mv-smzC9gLYng1UWNBh5-vpi58bvpZbVSOJn/exec";
+
+  let catalogos = null;
+  let assets = [];
+  let opsRows = [];
+
+  function showMessage(text, type="ok"){
+    const el = document.getElementById("msg");
+    el.className = type === "ok" ? "ok" : "err";
+    el.textContent = text;
+  }
+
+  function showView(name){
+    document.getElementById("view-registro").style.display = (name==="registro") ? "block" : "none";
+    document.getElementById("view-consulta").style.display = (name==="consulta") ? "block" : "none";
+    if (name==="consulta") loadUltimos();
+  }
+
+  function fillSelect(id, items){
+    const sel = document.getElementById(id);
+    sel.innerHTML = "";
+    for (const it of items){
+      const opt = document.createElement("option");
+      opt.value = it;
+      opt.textContent = it || "Selecciona...";
+      sel.appendChild(opt);
+    }
+  }
+
+  async function apiGet(params){
+    const url = new URL(API_URL);
+    Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, v));
+    const r = await fetch(url.toString(), { method:"GET" });
+    return await r.json();
+  }
+
+  async function apiPost(payload){
+    const r = await fetch(API_URL, {
+      method: "POST",
+      // ✅ SIN headers → evita preflight OPTIONS
+      body: JSON.stringify(payload),
+    });
+  
+    // Si Apps Script responde texto JSON, lo parseamos así:
+    const text = await r.text();
+    try { return JSON.parse(text); }
+    catch { return { ok:false, error:"Respuesta no-JSON: " + text }; }
+  }
+
+  async function init(){
+    try{
+      if (!API_URL || API_URL.includes("PEGA_AQUI")) {
+        showMessage("Falta configurar API_URL en el index.html (URL /exec de Apps Script).", "err");
+        return;
+      }
+      const data = await apiGet({ action:"getCatalogos" });
+      if (data.ok === false) throw new Error(data.error || "Error");
+      catalogos = data;
+      fillSelect("funcReceptor", ["", ...(data.funcionarios||[])]);
+      fillSelect("funcEntrega",  ["", ...(data.funcionarios||[])]);
+      showMessage("Listo para registrar.", "ok");
+    }catch(e){
+      showMessage("No se pudieron cargar catálogos. Revisa API_URL / permisos.\n" + (e.message || e), "err");
+    }
+  }
+
+  function onAccionChange(){
+    const accion = document.getElementById("accion").value;
+    if (accion === "Recepción"){
+      showMessage("Recepción: recomendado dejar los artefactos en PAÑOL (custodia).", "ok");
+    }
+  }
+
+  function focusManual(){
+    document.getElementById("assetInput").focus();
+  }
+
+  function addAsset(){
+    const input = document.getElementById("assetInput");
+    const id = (input.value || "").trim().toUpperCase();
+    if (!id) return;
+
+    if (assets.includes(id)){
+      showMessage("Ese artefacto ya fue agregado.", "err");
+      return;
+    }
+    assets.push(id);
+    input.value = "";
+    renderChips();
+    showMessage("Artefacto agregado.", "ok");
+  }
+
+  function removeAsset(id){
+    assets = assets.filter(x => x !== id);
+    renderChips();
+  }
+
+  function renderChips(){
+    const chips = document.getElementById("chips");
+    chips.innerHTML = "";
+    for (const id of assets){
+      const info = catalogos?.artefactoMap?.[id];
+      const label = info ? `${id} (${info.tipo})` : id;
+
+      const div = document.createElement("div");
+      div.className = "chip";
+      div.textContent = label;
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "×";
+      btn.onclick = ()=>removeAsset(id);
+      div.appendChild(btn);
+
+      chips.appendChild(div);
+    }
+  }
+
+  /***************
+   * FIRMA (evitar que se borre)
+   ***************/
+  const canvas = document.getElementById("sig");
+  const ctx = canvas.getContext("2d");
+  let drawing = false;
+
+  function initCanvasOnce(){
+    // set tamaño una sola vez (no en resize), para que NO se borre la firma
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.floor(rect.width);
+    canvas.height = 200; // fijo para estabilidad
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#111827";
+  }
+
+  function getPos(e){
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  canvas.addEventListener("pointerdown", (e)=>{
+    drawing = true;
+    const p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  });
+  canvas.addEventListener("pointermove", (e)=>{
+    if (!drawing) return;
+    const p = getPos(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  });
+  canvas.addEventListener("pointerup", ()=> drawing=false);
+  canvas.addEventListener("pointerleave", ()=> drawing=false);
+
+  function clearSignature(){ ctx.clearRect(0,0,canvas.width,canvas.height); }
+
+  function hasSignature(){
+    const img = ctx.getImageData(0,0,canvas.width,canvas.height).data;
+    for (let i=3; i<img.length; i+=4){ if (img[i] !== 0) return true; }
+    return false;
+  }
+
+  async function guardar(){
+    const turno = document.getElementById("turno").value;
+    const accion = document.getElementById("accion").value;
+    const receptor = document.getElementById("funcReceptor").value;
+    const entrega = document.getElementById("funcEntrega").value;
+    const estadoGeneral = document.getElementById("estadoGeneral").value;
+    const observacion = document.getElementById("observacion").value;
+
+    if (!turno || !accion || !receptor || !estadoGeneral){
+      showMessage("Faltan campos obligatorios (turno, acción, receptor, estado).", "err");
+      return;
+    }
+    if (assets.length === 0){
+      showMessage("Debes agregar al menos 1 artefacto.", "err");
+      return;
+    }
+    if (!hasSignature()){
+      showMessage("Falta la firma del receptor.", "err");
+      return;
+    }
+
+    const payload = {
+      turno,
+      accion,
+      funcionarioReceptor: receptor,
+      funcionarioEntrega: entrega,
+      estadoGeneral,
+      observacion,
+      assets: assets.slice(),
+      signatureDataUrl: canvas.toDataURL("image/png")
+    };
+
+    try{
+      showMessage("Guardando...", "ok");
+      const res = await apiPost(payload);
+      if (res.ok === false) throw new Error(res.error || "Error");
+      showMessage(`✔ Traspaso guardado OK.\nOperación: ${res.op_id}`, "ok");
+
+      // Limpieza
+      assets = [];
+      renderChips();
+      document.getElementById("assetInput").value = "";
+      document.getElementById("observacion").value = "";
+      clearSignature();
+
+    }catch(e){
+      showMessage("Error al guardar: " + (e.message || e), "err");
+    }
+  }
+
+  /***************
+   * CONSULTA
+   ***************/
+  async function loadUltimos(){
+    try{
+      const res = await apiGet({ action:"getUltimosTresTurnos" });
+      if (res.ok === false) throw new Error(res.error || "Error");
+      opsRows = res.rows || [];
+      renderTable();
+      document.getElementById("detalle").innerHTML = "";
+      showMessage("Tabla actualizada.", "ok");
+    }catch(e){
+      showMessage("No se pudo cargar la tabla.\n" + (e.message || e), "err");
+    }
+  }
+
+  function renderTable(){
+    const q = (document.getElementById("search").value || "").toLowerCase().trim();
+    const tbody = document.getElementById("opsBody");
+    tbody.innerHTML = "";
+
+    const filtered = (opsRows||[]).filter(r=>{
+      const blob = [r.op_id,r.turno,r.accion,r.funcionario_receptor,r.artefactos_resumen,r.estado_general]
+        .join(" ").toLowerCase();
+      return !q || blob.includes(q);
+    }).slice(0,60);
+
+    for (const r of filtered){
+      const tr = document.createElement("tr");
+      const dt = r.timestamp ? new Date(r.timestamp) : null;
+      const hh = dt ? dt.toLocaleString() : "";
+      tr.innerHTML = `
+        <td>${hh}</td>
+        <td>${r.turno||""}</td>
+        <td>${r.accion||""}</td>
+        <td>${r.funcionario_receptor||""}</td>
+        <td>${String(r.artefactos_resumen||"").slice(0,80)}</td>
+        <td>${r.estado_general||""}</td>
+        <td><button class="btn small" onclick="verDetalle('${r.op_id}')">Ver</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function verDetalle(opId){
+    try{
+      const res = await apiGet({ action:"getDetalleOperacion", op_id: opId });
+      if (res.ok === false) throw new Error(res.error || "Error");
+      const rows = res.rows || [];
+      let html = `<div class="card"><h3 style="margin:6px 0 10px;">Detalle ${opId}</h3>`;
+      if (rows.length === 0) html += `<div class="hint">Sin detalle.</div>`;
+      else{
+        html += `<div class="tableWrap"><table><thead><tr>
+          <th>Artefacto</th><th>Tipo</th><th>Acción</th><th>Receptor</th><th>Estado</th>
+        </tr></thead><tbody>`;
+        for (const r of rows){
+          html += `<tr>
+            <td>${r.id_artefacto}</td>
+            <td>${r.tipo||""}</td>
+            <td>${r.accion||""}</td>
+            <td>${r.funcionario_receptor||""}</td>
+            <td>${r.estado_artefacto||""}</td>
+          </tr>`;
+        }
+        html += `</tbody></table></div>`;
+      }
+      html += `</div>`;
+      document.getElementById("detalle").innerHTML = html;
+    }catch(e){
+      showMessage("No se pudo cargar detalle.\n" + (e.message || e), "err");
+    }
+  }
+
+  /***************
+   * SCANNER (cierra automáticamente)
+   ***************/
+  const modal = document.getElementById("scannerModal");
+  const videoEl = document.getElementById("video");
+  let zxingReader = null;
+  let scanning = false;
+
+  async function openScanner(){
+    try{
+      if (!window.ZXingBrowser) {
+        showMessage("No se cargó la librería de escaneo (ZXingBrowser).", "err");
+        return;
+      }
+      modal.style.display = "flex";
+      modal.setAttribute("aria-hidden","false");
+
+      zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
+      scanning = true;
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === "videoinput");
+      const deviceId = cams.length ? cams[cams.length - 1].deviceId : null;
+
+      await zxingReader.decodeFromVideoDevice(deviceId, videoEl, (result, err) => {
+        if (!scanning) return;
+        if (result) {
+          handleScanText(result.getText());
+          // ✅ vibración para feedback (si está disponible)
+          if (navigator.vibrate) navigator.vibrate(120);
+          // ✅ cerrar cámara automáticamente (menos confusión)
+          closeScanner();
+        }
+      });
+
+    }catch(e){
+      showMessage("No se pudo abrir cámara: " + (e.name || e.message), "err");
+      closeScanner();
+    }
+  }
+
+  function handleScanText(text){
+    const id = String(text||"").trim().toUpperCase();
+    if (!id) return;
+    document.getElementById("assetInput").value = id;
+    addAsset();
+    showMessage("QR leído: " + id, "ok");
+  }
+
+  function closeScanner(){
+    scanning = false;
+    if (zxingReader){
+      try{ zxingReader.reset(); }catch(_){}
+      zxingReader = null;
+    }
+    videoEl.srcObject = null;
+    modal.style.display = "none";
+    modal.setAttribute("aria-hidden","true");
+  }
+
+  window.addEventListener("load", ()=>{
+    initCanvasOnce();
+    init();
+  });
+</script>
+
+</body>
+</html>
