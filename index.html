@@ -123,9 +123,7 @@
       background: white;
     }
 
-    textarea {
-      resize: vertical;
-    }
+    textarea { resize: vertical; }
 
     .row {
       display: grid;
@@ -134,9 +132,7 @@
     }
 
     @media (max-width: 620px) {
-      .row {
-        grid-template-columns: 1fr;
-      }
+      .row { grid-template-columns: 1fr; }
     }
 
     .hint {
@@ -425,7 +421,7 @@
 </div>
 
 <script>
-const API_URL = "https://script.google.com/macros/s/AKfycbwC8nHaDfmjrdtFB86zh20-L4Ieo3OwMxLlfiy1w_Nar3pBrMyGo1GhxMJMkxSal4B5/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzejSderayBox7uKDyfDiAnOsCzcLYxWBwO8l_Xo39qwT9tBV5ithVzxj6OLZpoBxE/exec";
 
 let catalogos = null;
 let itemsState = [];
@@ -533,7 +529,7 @@ async function init() {
   }
 }
 
-function guardarSesion() {
+async function guardarSesion() {
   const enlace = document.getElementById("loginEnlace").value;
   const pin = document.getElementById("loginPin").value;
 
@@ -542,11 +538,29 @@ function guardarSesion() {
     return;
   }
 
-  localStorage.setItem("traspaso_enlace", enlace);
-  localStorage.setItem("traspaso_pin", pin || "");
+  try {
+    showMessage("Validando enlace...", "ok");
 
-  restoreSession();
-  showMessage("Sesión del enlace guardada.", "ok");
+    const res = await apiGet({
+      action: "validarPin",
+      nombre: enlace,
+      pin: pin || ""
+    });
+
+    if (!res.ok) {
+      showMessage(res.error || "PIN incorrecto.", "err");
+      return;
+    }
+
+    localStorage.setItem("traspaso_enlace", enlace);
+    localStorage.setItem("traspaso_pin", pin || "");
+
+    restoreSession();
+    showMessage("Sesión del enlace guardada correctamente.", "ok");
+
+  } catch (e) {
+    showMessage("No se pudo validar el PIN: " + (e.message || e), "err");
+  }
 }
 
 function cerrarSesion() {
@@ -628,12 +642,46 @@ function setItemObs(i, value) {
   itemsState[i].observacion_item = value;
 }
 
+function validarArtefactoId(id, tipoEsperado) {
+  if (!catalogos || !catalogos.artefactoMap) {
+    return { ok: false, error: "No se cargó el catálogo de artefactos." };
+  }
+
+  const art = catalogos.artefactoMap[id];
+
+  if (!art) {
+    return { ok: false, error: "El ID " + id + " no existe en la hoja ARTEFACTOS." };
+  }
+
+  const tipoReal = String(art.tipo || "").trim().toUpperCase();
+  const tipoReq = String(tipoEsperado || "").trim().toUpperCase();
+
+  if (tipoReal !== tipoReq) {
+    return {
+      ok: false,
+      error: "El ID " + id + " corresponde a " + tipoReal + ", no a " + tipoReq + "."
+    };
+  }
+
+  return { ok: true };
+}
+
 function manualId(i) {
   const id = prompt("Ingresa el ID del artefacto:");
   if (!id) return;
-  itemsState[i].id_artefacto = id.trim().toUpperCase();
+
+  const cleanId = id.trim().toUpperCase();
+  const validacion = validarArtefactoId(cleanId, itemsState[i].tipo);
+
+  if (!validacion.ok) {
+    showMessage(validacion.error, "err");
+    return;
+  }
+
+  itemsState[i].id_artefacto = cleanId;
   itemsState[i].estado_item = "Entregado";
   renderItems();
+  showMessage("ID válido: " + cleanId, "ok");
 }
 
 async function openScanner(i) {
@@ -659,6 +707,15 @@ async function openScanner(i) {
 
       if (result) {
         const id = String(result.getText() || "").trim().toUpperCase();
+        const validacion = validarArtefactoId(id, itemsState[scannerTargetIndex].tipo);
+
+        if (!validacion.ok) {
+          if (navigator.vibrate) navigator.vibrate([80, 80, 80]);
+          closeScanner();
+          showMessage(validacion.error, "err");
+          return;
+        }
+
         itemsState[scannerTargetIndex].id_artefacto = id;
         itemsState[scannerTargetIndex].estado_item = "Entregado";
 
@@ -830,9 +887,10 @@ function quitarConductor(i) {
 async function enviarTurno() {
   const enlace = localStorage.getItem("traspaso_enlace") || "";
   const pin = localStorage.getItem("traspaso_pin") || "";
+  const turnoId = "TURNO-CLIENT-" + Date.now();
 
   const payload = {
-    turno_id: "TURNO-CLIENT-" + Date.now(),
+    turno_id: turnoId,
     fecha: document.getElementById("fecha").value,
     turno: document.getElementById("turno").value,
     enlaceEntrante: enlace,
@@ -860,13 +918,43 @@ async function enviarTurno() {
 
   await apiPostViaForm(payload);
 
-  showMessage("✔ Turno enviado. Revisa la hoja TURNOS para confirmar.\nID: " + payload.turno_id, "ok");
+  showMessage("Verificando guardado...", "ok");
+
+  const confirmado = await confirmarTurnoGuardado(turnoId);
+
+  if (!confirmado) {
+    showMessage(
+      "No se pudo confirmar el guardado del turno.\nRevisa la hoja ERRORES en Google Sheets y verifica que el WebApp esté implementado como 'Cualquiera con el enlace'.",
+      "err"
+    );
+    return;
+  }
+
+  showMessage("✔ Turno guardado correctamente.\nID: " + turnoId, "ok");
 
   conductoresTurno = [];
   renderResumen();
   document.getElementById("observacionGeneral").value = "";
 
-  setTimeout(loadUltimos, 3500);
+  setTimeout(loadUltimos, 1500);
+}
+
+async function confirmarTurnoGuardado(turnoId) {
+  for (let i = 0; i < 6; i++) {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    try {
+      const res = await apiGet({
+        action: "turnoExiste",
+        turno_id: turnoId
+      });
+
+      if (res.ok && res.exists) return true;
+
+    } catch (_) {}
+  }
+
+  return false;
 }
 
 async function loadUltimos() {
