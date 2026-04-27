@@ -43,7 +43,7 @@
 
     .wrap {
       padding: 14px;
-      max-width: 900px;
+      max-width: 960px;
       margin: 0 auto;
     }
 
@@ -236,6 +236,16 @@
       border-radius: 12px;
       background: black;
     }
+
+    .session-box {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      color: #252c54;
+      border-radius: 14px;
+      padding: 12px;
+      font-weight: 900;
+      margin: 12px 0;
+    }
   </style>
 </head>
 
@@ -245,14 +255,30 @@
 </header>
 
 <div class="wrap">
+
   <div class="tabs">
-    <button id="tabRegistro" class="btn light active" onclick="showView('registro')">Registrar traspaso</button>
+    <button id="tabRegistro" class="btn light active" onclick="showView('registro')">Registrar turno</button>
     <button id="tabConsulta" class="btn light" onclick="showView('consulta')">Últimos registros</button>
   </div>
 
   <div id="msg"></div>
 
   <div id="view-registro">
+
+    <div class="card" id="loginCard">
+      <h2>Inicio de sesión del enlace</h2>
+
+      <label>Enlace entrante / encargado</label>
+      <select id="loginEnlace"></select>
+
+      <label>PIN</label>
+      <input id="loginPin" type="password" inputmode="numeric" placeholder="PIN del enlace">
+
+      <button class="btn" onclick="guardarSesion()">INICIAR SESIÓN</button>
+      <div class="hint">El enlace se guarda en este teléfono/navegador para no repetirlo en cada conductor.</div>
+    </div>
+
+    <div class="session-box" id="sessionBox" style="display:none;"></div>
 
     <div class="card">
       <h2>Datos del turno</h2>
@@ -273,16 +299,12 @@
         </div>
       </div>
 
-      <label>Enlace entrante / encargado de entrega</label>
-      <select id="enlaceEntrante"></select>
-
-      <h3>Firma enlace entrante</h3>
-      <canvas id="firmaEnlace"></canvas>
-      <button class="btn light" onclick="clearCanvas('enlace')">Limpiar firma enlace</button>
+      <label>Observación general del turno</label>
+      <textarea id="observacionGeneral" rows="2" placeholder="Observación general del turno..."></textarea>
     </div>
 
     <div class="card">
-      <h2>Datos del móvil y funcionario</h2>
+      <h2>Agregar conductor / móvil</h2>
 
       <div class="row">
         <div>
@@ -322,32 +344,56 @@
         </div>
       </div>
 
-      <label>Observación general</label>
-      <textarea id="observacion" rows="3" placeholder="Ej: móvil sale sin casco, radio con audio bajo, etc."></textarea>
+      <label>Observación del conductor/móvil</label>
+      <textarea id="observacionConductor" rows="2" placeholder="Ej: móvil sale sin casco, radio con audio bajo..."></textarea>
     </div>
 
     <div class="card">
-      <h2>Artefactos del turno</h2>
+      <h2>Artefactos del conductor</h2>
       <div class="hint">Debes responder cada artefacto listado. Si corresponde, escanea el QR.</div>
       <div id="itemsContainer"></div>
     </div>
 
     <div class="card">
-      <h2>Firma conductor / funcionario receptor</h2>
+      <h2>Firma del conductor</h2>
       <canvas id="firmaConductor"></canvas>
-      <button class="btn light" onclick="clearCanvas('conductor')">Limpiar firma conductor</button>
+      <button class="btn light" onclick="clearFirma()">Limpiar firma conductor</button>
 
-      <button class="btn" onclick="guardar()">GUARDAR TRASPASO</button>
+      <button class="btn" onclick="agregarConductor()">AGREGAR CONDUCTOR AL TURNO</button>
     </div>
+
+    <div class="card">
+      <h2>Resumen antes de enviar</h2>
+      <div class="hint">Revisa que estén todos los conductores antes de enviar el turno completo.</div>
+
+      <div class="tableWrap" style="margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Patente</th>
+              <th>Servicio</th>
+              <th>Conductor</th>
+              <th>Artefactos</th>
+              <th>Acción</th>
+              <th>Quitar</th>
+            </tr>
+          </thead>
+          <tbody id="resumenBody"></tbody>
+        </table>
+      </div>
+
+      <button class="btn" onclick="enviarTurno()">ENVIAR TRASPASO DEL TURNO</button>
+    </div>
+
   </div>
 
   <div id="view-consulta" style="display:none;">
     <div class="card">
-      <h2>Últimos registros</h2>
+      <h2>Últimos turnos enviados</h2>
       <button class="btn light" onclick="loadUltimos()">Refrescar</button>
 
       <label>Buscar</label>
-      <input id="search" oninput="renderTable()" placeholder="Buscar por conductor, patente, operación...">
+      <input id="search" oninput="renderTable()" placeholder="Buscar por fecha, turno, enlace...">
 
       <div class="tableWrap" style="margin-top:12px;">
         <table>
@@ -355,9 +401,8 @@
             <tr>
               <th>Fecha</th>
               <th>Turno</th>
-              <th>Patente</th>
-              <th>Conductor</th>
-              <th>Acción</th>
+              <th>Enlace</th>
+              <th>Total conductores</th>
               <th>Detalle</th>
             </tr>
           </thead>
@@ -380,14 +425,18 @@
 </div>
 
 <script>
-const API_URL = "https://script.google.com/macros/s/AKfycbzV3rVAc-lYfMVZy50VscjTecSyxpK2X8fLFkI8vkeruXHF4vfpa8lLfGOpleITYWqY/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwC8nHaDfmjrdtFB86zh20-L4Ieo3OwMxLlfiy1w_Nar3pBrMyGo1GhxMJMkxSal4B5/exec";
 
 let catalogos = null;
 let itemsState = [];
+let conductoresTurno = [];
 let opsRows = [];
+
 let scannerTargetIndex = null;
 let zxingReader = null;
 let scanning = false;
+
+const firma = { canvas: null, ctx: null, drawing: false };
 
 function showMessage(text, type="ok") {
   const el = document.getElementById("msg");
@@ -398,7 +447,6 @@ function showMessage(text, type="ok") {
 function showView(view) {
   document.getElementById("view-registro").style.display = view === "registro" ? "block" : "none";
   document.getElementById("view-consulta").style.display = view === "consulta" ? "block" : "none";
-
   document.getElementById("tabRegistro").classList.toggle("active", view === "registro");
   document.getElementById("tabConsulta").classList.toggle("active", view === "consulta");
 
@@ -414,7 +462,7 @@ function fillSelect(id, values) {
   first.textContent = "Selecciona...";
   sel.appendChild(first);
 
-  values.forEach(v => {
+  (values || []).forEach(v => {
     const opt = document.createElement("option");
     opt.value = v;
     opt.textContent = v;
@@ -424,13 +472,13 @@ function fillSelect(id, values) {
 
 async function apiGet(params) {
   const url = new URL(API_URL);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  Object.entries(params).forEach(([k,v]) => url.searchParams.set(k,v));
   const r = await fetch(url.toString());
   return await r.json();
 }
 
 function apiPostViaForm(payload) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const iframeName = "hidden_iframe_" + Date.now();
 
     const iframe = document.createElement("iframe");
@@ -458,7 +506,7 @@ function apiPostViaForm(payload) {
       form.remove();
       iframe.remove();
       resolve({ ok: true });
-    }, 2500);
+    }, 3000);
   });
 }
 
@@ -471,21 +519,59 @@ async function init() {
 
     catalogos = data;
 
-    fillSelect("enlaceEntrante", data.funcionarios || []);
-    fillSelect("conductor", data.funcionarios || []);
-    fillSelect("patente", data.patentes || []);
-    fillSelect("servicio", data.servicios || []);
+    fillSelect("loginEnlace", data.funcionarios);
+    fillSelect("conductor", data.funcionarios);
+    fillSelect("patente", data.patentes);
+    fillSelect("servicio", data.servicios);
 
-    buildItems(data.tiposArtefacto || []);
+    restoreSession();
+    resetItems();
     showMessage("Listo para registrar.", "ok");
 
   } catch (e) {
-    showMessage("No se pudieron cargar los catálogos: " + (e.message || e), "err");
+    showMessage("No se pudieron cargar catálogos: " + (e.message || e), "err");
   }
 }
 
-function buildItems(tipos) {
-  itemsState = tipos.map(t => ({
+function guardarSesion() {
+  const enlace = document.getElementById("loginEnlace").value;
+  const pin = document.getElementById("loginPin").value;
+
+  if (!enlace) {
+    showMessage("Debes seleccionar el enlace entrante.", "err");
+    return;
+  }
+
+  localStorage.setItem("traspaso_enlace", enlace);
+  localStorage.setItem("traspaso_pin", pin || "");
+
+  restoreSession();
+  showMessage("Sesión del enlace guardada.", "ok");
+}
+
+function cerrarSesion() {
+  localStorage.removeItem("traspaso_enlace");
+  localStorage.removeItem("traspaso_pin");
+  restoreSession();
+}
+
+function restoreSession() {
+  const enlace = localStorage.getItem("traspaso_enlace") || "";
+  const box = document.getElementById("sessionBox");
+  const login = document.getElementById("loginCard");
+
+  if (enlace) {
+    box.style.display = "block";
+    box.innerHTML = `Enlace activo: ${enlace}<br><button class="btn small light" onclick="cerrarSesion()">Cambiar enlace</button>`;
+    login.style.display = "none";
+  } else {
+    box.style.display = "none";
+    login.style.display = "block";
+  }
+}
+
+function resetItems() {
+  itemsState = (catalogos?.tiposArtefacto || []).map(t => ({
     ...t,
     estado_item: "Pendiente",
     id_artefacto: "",
@@ -499,10 +585,14 @@ function renderItems() {
   const cont = document.getElementById("itemsContainer");
   cont.innerHTML = "";
 
+  if (!itemsState.length) {
+    cont.innerHTML = `<div class="err">No se cargaron artefactos. Revisa la hoja TIPOS_ARTEFACTO.</div>`;
+    return;
+  }
+
   itemsState.forEach((item, i) => {
     const div = document.createElement("div");
     div.className = "item-card";
-
     div.innerHTML = `
       <div class="item-title">${item.orden}. ${item.nombre_visible}</div>
       <div class="hint">Obligatorio: ${item.obligatorio} · Requiere QR: ${item.requiere_qr}</div>
@@ -526,7 +616,6 @@ function renderItems() {
       <label>Observación del artefacto</label>
       <textarea rows="2" onchange="setItemObs(${i}, this.value)" placeholder="Observación específica...">${item.observacion_item || ""}</textarea>
     `;
-
     cont.appendChild(div);
   });
 }
@@ -543,6 +632,7 @@ function manualId(i) {
   const id = prompt("Ingresa el ID del artefacto:");
   if (!id) return;
   itemsState[i].id_artefacto = id.trim().toUpperCase();
+  itemsState[i].estado_item = "Entregado";
   renderItems();
 }
 
@@ -564,12 +654,11 @@ async function openScanner(i) {
     const cams = devices.filter(d => d.kind === "videoinput");
     const deviceId = cams.length ? cams[cams.length - 1].deviceId : null;
 
-    await zxingReader.decodeFromVideoDevice(deviceId, document.getElementById("video"), (result) => {
+    await zxingReader.decodeFromVideoDevice(deviceId, document.getElementById("video"), result => {
       if (!scanning) return;
 
       if (result) {
         const id = String(result.getText() || "").trim().toUpperCase();
-
         itemsState[scannerTargetIndex].id_artefacto = id;
         itemsState[scannerTargetIndex].estado_item = "Entregado";
 
@@ -595,19 +684,12 @@ function closeScanner() {
     zxingReader = null;
   }
 
-  const video = document.getElementById("video");
-  video.srcObject = null;
-
+  document.getElementById("video").srcObject = null;
   document.getElementById("scannerModal").style.display = "none";
 }
 
-const firma = {
-  enlace: { canvas: null, ctx: null, drawing: false },
-  conductor: { canvas: null, ctx: null, drawing: false }
-};
-
-function initSignature(which, id) {
-  const canvas = document.getElementById(id);
+function initSignature() {
+  const canvas = document.getElementById("firmaConductor");
   const ctx = canvas.getContext("2d");
 
   const rect = canvas.getBoundingClientRect();
@@ -618,24 +700,26 @@ function initSignature(which, id) {
   ctx.lineCap = "round";
   ctx.strokeStyle = "#111827";
 
-  firma[which] = { canvas, ctx, drawing: false };
+  firma.canvas = canvas;
+  firma.ctx = ctx;
+  firma.drawing = false;
 
   canvas.addEventListener("pointerdown", e => {
-    firma[which].drawing = true;
+    firma.drawing = true;
     const p = getCanvasPos(canvas, e);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
   });
 
   canvas.addEventListener("pointermove", e => {
-    if (!firma[which].drawing) return;
+    if (!firma.drawing) return;
     const p = getCanvasPos(canvas, e);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   });
 
-  canvas.addEventListener("pointerup", () => firma[which].drawing = false);
-  canvas.addEventListener("pointerleave", () => firma[which].drawing = false);
+  canvas.addEventListener("pointerup", () => firma.drawing = false);
+  canvas.addEventListener("pointerleave", () => firma.drawing = false);
 }
 
 function getCanvasPos(canvas, e) {
@@ -643,69 +727,144 @@ function getCanvasPos(canvas, e) {
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
-function clearCanvas(which) {
-  const f = firma[which];
-  f.ctx.clearRect(0, 0, f.canvas.width, f.canvas.height);
+function clearFirma() {
+  firma.ctx.clearRect(0, 0, firma.canvas.width, firma.canvas.height);
 }
 
-function hasSignature(which) {
-  const f = firma[which];
-  const img = f.ctx.getImageData(0, 0, f.canvas.width, f.canvas.height).data;
+function hasFirma() {
+  const img = firma.ctx.getImageData(0, 0, firma.canvas.width, firma.canvas.height).data;
   for (let i = 3; i < img.length; i += 4) {
     if (img[i] !== 0) return true;
   }
   return false;
 }
 
-async function guardar() {
-  const payload = {
-    op_id: "OP-CLIENT-" + Date.now(),
-    fecha: document.getElementById("fecha").value,
-    turno: document.getElementById("turno").value,
-    enlaceEntrante: document.getElementById("enlaceEntrante").value,
-    patente: document.getElementById("patente").value,
-    servicio: document.getElementById("servicio").value,
-    conductor: document.getElementById("conductor").value,
-    accion: document.getElementById("accion").value,
-    estadoGeneral: document.getElementById("estadoGeneral").value,
-    observacion: document.getElementById("observacion").value,
-    items: itemsState,
-    firmaEnlaceDataUrl: firma.enlace.canvas.toDataURL("image/png"),
-    firmaConductorDataUrl: firma.conductor.canvas.toDataURL("image/png")
-  };
+function validarConductorActual() {
+  const patente = document.getElementById("patente").value;
+  const servicio = document.getElementById("servicio").value;
+  const conductor = document.getElementById("conductor").value;
+  const accion = document.getElementById("accion").value;
+  const estadoGeneral = document.getElementById("estadoGeneral").value;
 
-  if (!payload.fecha || !payload.turno || !payload.enlaceEntrante || !payload.patente || !payload.servicio || !payload.conductor || !payload.accion || !payload.estadoGeneral) {
-    showMessage("Faltan campos obligatorios del turno o móvil.", "err");
-    return;
+  if (!patente || !servicio || !conductor || !accion || !estadoGeneral) {
+    showMessage("Faltan datos del conductor/móvil.", "err");
+    return false;
   }
 
-  if (!hasSignature("enlace")) {
-    showMessage("Falta la firma del enlace entrante.", "err");
-    return;
-  }
-
-  if (!hasSignature("conductor")) {
+  if (!hasFirma()) {
     showMessage("Falta la firma del conductor.", "err");
-    return;
+    return false;
   }
 
   for (const item of itemsState) {
     if (!item.estado_item || item.estado_item === "Pendiente") {
       showMessage("Debes responder el estado de: " + item.nombre_visible, "err");
-      return;
+      return false;
     }
 
     if (item.requiere_qr === "SI" && ["Entregado", "Con observación"].includes(item.estado_item) && !item.id_artefacto) {
       showMessage("Debes escanear o ingresar ID para: " + item.nombre_visible, "err");
-      return;
+      return false;
     }
   }
 
-  showMessage("Guardando traspaso...", "ok");
+  return true;
+}
+
+function agregarConductor() {
+  if (!validarConductorActual()) return;
+
+  const conductorData = {
+    conductor_id: "COND-" + Date.now(),
+    patente: document.getElementById("patente").value,
+    servicio: document.getElementById("servicio").value,
+    conductor: document.getElementById("conductor").value,
+    accion: document.getElementById("accion").value,
+    estadoGeneral: document.getElementById("estadoGeneral").value,
+    observacion: document.getElementById("observacionConductor").value,
+    items: JSON.parse(JSON.stringify(itemsState)),
+    firmaConductorDataUrl: firma.canvas.toDataURL("image/png")
+  };
+
+  conductoresTurno.push(conductorData);
+  renderResumen();
+
+  document.getElementById("patente").value = "";
+  document.getElementById("servicio").value = "";
+  document.getElementById("conductor").value = "";
+  document.getElementById("accion").value = "";
+  document.getElementById("estadoGeneral").value = "";
+  document.getElementById("observacionConductor").value = "";
+  clearFirma();
+  resetItems();
+
+  showMessage("Conductor agregado al resumen. Puedes registrar el siguiente.", "ok");
+}
+
+function renderResumen() {
+  const tbody = document.getElementById("resumenBody");
+  tbody.innerHTML = "";
+
+  conductoresTurno.forEach((c, i) => {
+    const total = c.items.length;
+    const completos = c.items.filter(x => x.estado_item && x.estado_item !== "Pendiente").length;
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${c.patente}</td>
+      <td>${c.servicio}</td>
+      <td>${c.conductor}</td>
+      <td>${completos}/${total}</td>
+      <td>${c.accion}</td>
+      <td><button class="btn small secondary" onclick="quitarConductor(${i})">Quitar</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function quitarConductor(i) {
+  conductoresTurno.splice(i, 1);
+  renderResumen();
+}
+
+async function enviarTurno() {
+  const enlace = localStorage.getItem("traspaso_enlace") || "";
+  const pin = localStorage.getItem("traspaso_pin") || "";
+
+  const payload = {
+    turno_id: "TURNO-CLIENT-" + Date.now(),
+    fecha: document.getElementById("fecha").value,
+    turno: document.getElementById("turno").value,
+    enlaceEntrante: enlace,
+    pin: pin,
+    observacionGeneral: document.getElementById("observacionGeneral").value,
+    conductores: conductoresTurno
+  };
+
+  if (!payload.enlaceEntrante) {
+    showMessage("Debes iniciar sesión como enlace entrante.", "err");
+    return;
+  }
+
+  if (!payload.fecha || !payload.turno) {
+    showMessage("Debes completar fecha y turno.", "err");
+    return;
+  }
+
+  if (conductoresTurno.length === 0) {
+    showMessage("Debes agregar al menos un conductor antes de enviar.", "err");
+    return;
+  }
+
+  showMessage("Enviando turno completo...", "ok");
 
   await apiPostViaForm(payload);
 
-  showMessage("✔ Traspaso enviado. Revisa la hoja OPERACIONES para confirmar el registro.\nOperación: " + payload.op_id, "ok");
+  showMessage("✔ Turno enviado. Revisa la hoja TURNOS para confirmar.\nID: " + payload.turno_id, "ok");
+
+  conductoresTurno = [];
+  renderResumen();
+  document.getElementById("observacionGeneral").value = "";
 
   setTimeout(loadUltimos, 3500);
 }
@@ -728,52 +887,61 @@ function renderTable() {
   const tbody = document.getElementById("opsBody");
   tbody.innerHTML = "";
 
-  const filtered = opsRows.filter(r => {
-    const blob = [r.op_id, r.fecha, r.turno, r.patente, r.conductor, r.accion].join(" ").toLowerCase();
+  opsRows.filter(r => {
+    const blob = [r.turno_id, r.fecha, r.turno, r.enlace_entrante].join(" ").toLowerCase();
     return !q || blob.includes(q);
-  });
-
-  filtered.slice(0, 80).forEach(r => {
+  }).slice(0, 80).forEach(r => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${r.fecha || ""}</td>
       <td>${r.turno || ""}</td>
-      <td>${r.patente || ""}</td>
-      <td>${r.conductor || ""}</td>
-      <td>${r.accion || ""}</td>
-      <td><button class="btn small" onclick="verDetalle('${r.op_id}')">Ver</button></td>
+      <td>${r.enlace_entrante || ""}</td>
+      <td>${r.total_conductores || ""}</td>
+      <td><button class="btn small" onclick="verDetalle('${r.turno_id}')">Ver</button></td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-async function verDetalle(opId) {
+async function verDetalle(turnoId) {
   try {
-    const res = await apiGet({ action: "getDetalleOperacion", op_id: opId });
-    const rows = res.rows || [];
+    const res = await apiGet({ action: "getDetalleTurno", turno_id: turnoId });
 
-    let html = `<div class="card"><h3>Detalle ${opId}</h3>`;
+    let html = `<div class="card"><h3>Detalle ${turnoId}</h3>`;
 
-    if (rows.length === 0) {
-      html += `<div class="hint">Sin detalle.</div>`;
-    } else {
-      html += `<div class="tableWrap"><table><thead><tr>
-        <th>Artefacto</th><th>ID</th><th>Estado</th><th>Observación</th>
-      </tr></thead><tbody>`;
+    html += `<h3>Conductores</h3>`;
+    html += `<div class="tableWrap"><table><thead><tr>
+      <th>Patente</th><th>Servicio</th><th>Conductor</th><th>Acción</th>
+    </tr></thead><tbody>`;
 
-      rows.forEach(r => {
-        html += `<tr>
-          <td>${r.nombre_visible || ""}</td>
-          <td>${r.id_artefacto || ""}</td>
-          <td>${r.estado_item || ""}</td>
-          <td>${r.observacion_item || ""}</td>
-        </tr>`;
-      });
+    (res.conductores || []).forEach(c => {
+      html += `<tr>
+        <td>${c.patente || ""}</td>
+        <td>${c.servicio || ""}</td>
+        <td>${c.conductor || ""}</td>
+        <td>${c.accion || ""}</td>
+      </tr>`;
+    });
 
-      html += `</tbody></table></div>`;
-    }
+    html += `</tbody></table></div>`;
 
-    html += `</div>`;
+    html += `<h3>Artefactos</h3>`;
+    html += `<div class="tableWrap"><table><thead><tr>
+      <th>Conductor</th><th>Artefacto</th><th>ID</th><th>Estado</th><th>Obs.</th>
+    </tr></thead><tbody>`;
+
+    (res.movimientos || []).forEach(m => {
+      html += `<tr>
+        <td>${m.conductor || ""}</td>
+        <td>${m.nombre_visible || ""}</td>
+        <td>${m.id_artefacto || ""}</td>
+        <td>${m.estado_item || ""}</td>
+        <td>${m.observacion_item || ""}</td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div></div>`;
+
     document.getElementById("detalle").innerHTML = html;
 
   } catch (e) {
@@ -782,10 +950,10 @@ async function verDetalle(opId) {
 }
 
 window.addEventListener("load", () => {
-  initSignature("enlace", "firmaEnlace");
-  initSignature("conductor", "firmaConductor");
+  initSignature();
   init();
 });
 </script>
+
 </body>
 </html>
